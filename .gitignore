@@ -1,0 +1,22 @@
+# Build output
+target/
+
+# env file
+.env
+
+# Uploaded files; the directories themselves are kept with .gitkeep
+/uploads/**
+!/uploads/*/
+!/uploads/*/.gitkeep
+
+# Editor/IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+
+# Logs
+*.log
