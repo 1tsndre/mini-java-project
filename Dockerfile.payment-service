@@ -1,0 +1,38 @@
+# =========================
+# Stage 1: Build
+# =========================
+# A glibc-based JDK: the protobuf compiler that Maven downloads does not run on Alpine.
+FROM eclipse-temurin:21-jdk AS builder
+
+WORKDIR /app
+
+COPY mvnw pom.xml ./
+COPY .mvn .mvn
+COPY proto/pom.xml proto/
+COPY common/pom.xml common/
+COPY store-service/pom.xml store-service/
+COPY payment-service/pom.xml payment-service/
+RUN ./mvnw -B -q dependency:go-offline -pl payment-service -am
+
+COPY proto proto
+COPY common common
+COPY payment-service payment-service
+RUN ./mvnw -B -q package -pl payment-service -am -DskipTests
+
+# =========================
+# Stage 2: Runtime
+# =========================
+FROM eclipse-temurin:21-jre-alpine
+
+RUN apk add --no-cache tzdata && \
+    addgroup -S app && adduser -S app -G app
+
+WORKDIR /app
+
+COPY --from=builder /app/payment-service/target/payment-service.jar ./payment-service.jar
+
+USER app
+
+EXPOSE 50051
+
+ENTRYPOINT ["java", "-jar", "payment-service.jar"]
