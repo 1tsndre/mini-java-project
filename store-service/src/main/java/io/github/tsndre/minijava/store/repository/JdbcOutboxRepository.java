@@ -1,5 +1,6 @@
 package io.github.tsndre.minijava.store.repository;
 
+import io.github.tsndre.minijava.store.config.SqlLoggingDataSource;
 import io.github.tsndre.minijava.store.model.OutboxMessage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
@@ -22,6 +23,11 @@ public class JdbcOutboxRepository implements OutboxRepository {
 
     @Override
     public PublishResult publishPending(int limit, Consumer<OutboxMessage> publish) {
+        // The relay polls every second; logging each poll would bury the other queries.
+        return SqlLoggingDataSource.withoutQueryLog(() -> publish(limit, publish));
+    }
+
+    private PublishResult publish(int limit, Consumer<OutboxMessage> publish) {
         try {
             return transactions.execute(status -> {
                 // The row locks keep a concurrent relay from publishing the same messages.

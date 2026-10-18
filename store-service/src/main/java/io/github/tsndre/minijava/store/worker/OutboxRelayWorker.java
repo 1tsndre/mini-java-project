@@ -42,10 +42,12 @@ public class OutboxRelayWorker implements SmartLifecycle {
 
     void runOnce() {
         try {
-            outboxRepository.publishPending(OutboxRelay.BATCH_SIZE,
-                            message -> publisher.publish(message.topic(), message.payload().getBytes(StandardCharsets.UTF_8)))
-                    .rejection()
-                    .ifPresent(e -> log.error("failed to relay outbox messages", e));
+            OutboxRepository.PublishResult result = outboxRepository.publishPending(OutboxRelay.BATCH_SIZE,
+                    message -> publisher.publish(message.topic(), message.payload().getBytes(StandardCharsets.UTF_8)));
+            if (result.published() > 0) {
+                log.atDebug().addKeyValue("count", result.published()).log("published outbox messages");
+            }
+            result.rejection().ifPresent(e -> log.error("failed to relay outbox messages", e));
         } catch (RuntimeException e) {
             log.error("failed to relay outbox messages", e);
         }

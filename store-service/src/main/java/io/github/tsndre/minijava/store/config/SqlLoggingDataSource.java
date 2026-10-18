@@ -15,6 +15,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * Logs every statement the application runs, on a single line with its duration and row count,
@@ -26,6 +27,8 @@ public final class SqlLoggingDataSource extends DelegatingDataSource {
 
     private static final Set<String> EXECUTE_METHODS =
             Set.of("execute", "executeQuery", "executeUpdate", "executeLargeUpdate");
+
+    private static final ThreadLocal<Boolean> QUIET = ThreadLocal.withInitial(() -> false);
 
     private volatile boolean enabled;
 
@@ -39,6 +42,20 @@ public final class SqlLoggingDataSource extends DelegatingDataSource {
 
     public void enable() {
         enabled = true;
+    }
+
+    /**
+     * Runs work with its successful queries left out of the log, for queries that run in the
+     * background all the time. Failed queries are still logged.
+     */
+    public static <T> T withoutQueryLog(Supplier<T> work) {
+        boolean wasQuiet = QUIET.get();
+        QUIET.set(true);
+        try {
+            return work.get();
+        } finally {
+            QUIET.set(wasQuiet);
+        }
     }
 
     @Override
@@ -106,6 +123,9 @@ public final class SqlLoggingDataSource extends DelegatingDataSource {
     }
 
     private static void logQuery(String sql, long start, long rows) {
+        if (QUIET.get()) {
+            return;
+        }
         log.atDebug()
                 .addKeyValue("sql", singleLine(sql))
                 .addKeyValue("duration", since(start))
