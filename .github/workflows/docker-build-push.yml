@@ -7,6 +7,23 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # The repository integration tests run against this database; without it they are skipped.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mini_java_ecommerce
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/mini_java_ecommerce?sslmode=disable
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -18,7 +35,7 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Run unit tests
+      - name: Run unit and integration tests
         run: ./mvnw -B test
 
   build-and-push:

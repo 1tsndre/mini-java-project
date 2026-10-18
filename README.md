@@ -343,6 +343,8 @@ TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/mini_java_ecommer
   ./mvnw -pl store-service -am test -Dtest=RepositoryIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
+CI runs them on every push, against a PostgreSQL service container.
+
 The end-to-end QA script runs the same 84 cases as the Go project against a running service:
 
 ```bash
