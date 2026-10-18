@@ -8,6 +8,7 @@ import io.github.tsndre.minijava.store.model.CartItem;
 import io.github.tsndre.minijava.store.model.Category;
 import io.github.tsndre.minijava.store.model.Order;
 import io.github.tsndre.minijava.store.model.OrderItem;
+import io.github.tsndre.minijava.store.model.OutboxMessage;
 import io.github.tsndre.minijava.store.model.Payment;
 import io.github.tsndre.minijava.store.model.Product;
 import io.github.tsndre.minijava.store.model.Review;
@@ -102,6 +103,12 @@ final class RowMappers {
             .createdAt(time(rs, "created_at"))
             .updatedAt(time(rs, "updated_at"))
             .build();
+
+    static final RowMapper<OutboxMessage> OUTBOX_MESSAGE = (rs, i) -> new OutboxMessage(
+            rs.getLong("id"),
+            text(rs, "topic"),
+            text(rs, "payload"),
+            time(rs, "created_at"));
 
     static final RowMapper<Review> REVIEW = (rs, i) -> Review.builder()
             .id(uuid(rs, "id"))

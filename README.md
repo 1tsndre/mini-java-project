@@ -60,7 +60,7 @@ Services report failures with typed exceptions (`NotFoundException`, `ConflictEx
 - **Products** — Full CRUD, search, filter by category/store/price, image upload
 - **Cart** — Redis-first with PostgreSQL fallback, persists across sessions, always shows current product prices (the price checkout charges)
 - **Orders** — Checkout reserves stock atomically in a single database transaction (conditional decrement, so stock can never go negative), split into one order per store (a single checkout may create multiple orders), status flow: `pending → paid → processing → shipping → shipped → completed`, cancellation up to `processing` (stock is returned in the same transaction)
-- **Payment Pipeline** — Async via NSQ: order created → payment processed (mock) → status updated. Orders still pending after 2 minutes are republished, and the payment service answers duplicate deliveries for an order with its recorded result
+- **Payment Pipeline** — Async via NSQ: order created → payment processed (mock) → status updated. Checkout writes `order.created` to a transactional outbox, in the same transaction as the orders, and a relay publishes it within a second, so a message is never lost between the database commit and NSQ. Orders still pending after 2 minutes are republished, and the payment service answers duplicate deliveries for an order with its recorded result
 - **Reviews** — One review per purchased product, rating 1–5 with optional comment
 - **Rate Limiting** — Sliding window using Redis Sorted Sets
 - **Observability** — Structured logging with request ID propagation, SQL statement logging in development, graceful shutdown
@@ -94,7 +94,7 @@ mini-java-project/
 │       │   │   └── filter/         # request ID, access log, body size limit, timeout
 │       │   ├── messaging/          # NSQ publisher and consumer (payment results)
 │       │   ├── grpc/               # Payment service client
-│       │   ├── worker/             # Background jobs (republish stale pending orders)
+│       │   ├── worker/             # Background jobs (outbox relay, republish stale pending orders)
 │       │   ├── pagination/         # Page handling
 │       │   └── util/               # Go-compatible UUID, decimal and string rules
 │       └── resources/

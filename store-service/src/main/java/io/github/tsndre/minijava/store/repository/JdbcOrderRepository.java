@@ -1,6 +1,7 @@
 package io.github.tsndre.minijava.store.repository;
 
 import io.github.tsndre.minijava.store.constant.CacheKey;
+import io.github.tsndre.minijava.store.constant.NsqTopic;
 import io.github.tsndre.minijava.store.constant.OrderStatus;
 import io.github.tsndre.minijava.store.constant.PaymentStatus;
 import io.github.tsndre.minijava.store.model.Order;
@@ -13,6 +14,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -35,6 +37,7 @@ public class JdbcOrderRepository implements OrderRepository {
     private final JdbcClient jdbc;
     private final TransactionTemplate transactions;
     private final Cache cache;
+    private final JsonMapper jsonMapper;
 
     @Override
     public List<Order> createOrdersWithStock(List<StockReservation> reservations,
@@ -62,7 +65,10 @@ public class JdbcOrderRepository implements OrderRepository {
 
                 List<Order> stored = new ArrayList<>();
                 for (Order order : build.apply(reserved)) {
-                    stored.add(insertOrder(order));
+                    Order inserted = insertOrder(order);
+                    JdbcOutboxRepository.insert(jdbc, NsqTopic.ORDER_CREATED,
+                            jsonMapper.writeValueAsString(inserted.createdMessage()));
+                    stored.add(inserted);
                 }
                 return stored;
             });

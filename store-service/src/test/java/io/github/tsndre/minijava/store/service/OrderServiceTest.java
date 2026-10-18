@@ -171,18 +171,10 @@ class OrderServiceTest {
             List<OrderResponse> orders = orderService.checkout(userId, ADDRESS);
 
             assertThat(orders).hasSize(2);
-            assertThat(publisher.messages).hasSize(2).allMatch(m -> m.startsWith(NsqTopic.ORDER_CREATED + " "));
+            assertThat(publisher.messages)
+                    .as("the repository queues order.created in the outbox; the relay publishes it")
+                    .isEmpty();
             verify(cartRepository).deleteCart(userId);
-        }
-
-        @Test
-        void publishFailureDoesNotFailCheckout() {
-            publisher.error = new RuntimeException("nsq down");
-            when(cartRepository.getCart(userId)).thenReturn(cart());
-            reserveAll();
-
-            assertThat(orderService.checkout(userId, ADDRESS)).hasSize(2);
-            assertThat(publisher.messages).isEmpty();
         }
 
         @Test

@@ -86,7 +86,8 @@ class SchemaTest {
                 "reviews", JdbcReviewRepository.COLUMNS,
                 "orders", JdbcOrderRepository.ORDER_COLUMNS,
                 "order_items", JdbcOrderRepository.ORDER_ITEM_COLUMNS,
-                "payments", JdbcOrderRepository.PAYMENT_COLUMNS);
+                "payments", JdbcOrderRepository.PAYMENT_COLUMNS,
+                "outbox", JdbcOutboxRepository.COLUMNS);
 
         lists.forEach((table, list) -> {
             assertThat(schema).as("table %s is not in the migrations", table).containsKey(table);
@@ -106,6 +107,7 @@ class SchemaTest {
         assertReadsOnly(RowMappers.ORDER, "orders");
         assertReadsOnly(RowMappers.ORDER_ITEM, "order_items");
         assertReadsOnly(RowMappers.PAYMENT, "payments");
+        assertReadsOnly(RowMappers.OUTBOX_MESSAGE, "outbox");
         // The cart is read by joining cart_items with products.
         assertReadsOnly(RowMappers.CART_ITEM, "cart_items", "products");
     }
@@ -138,6 +140,7 @@ class SchemaTest {
                             default -> "text";
                         };
                         case "getInt" -> 1;
+                        case "getLong" -> 1L;
                         case "getBigDecimal" -> BigDecimal.ONE;
                         case "getObject" -> args[1] == UUID.class ? UUID.randomUUID() : OffsetDateTime.now();
                         default -> throw new UnsupportedOperationException(method.getName());

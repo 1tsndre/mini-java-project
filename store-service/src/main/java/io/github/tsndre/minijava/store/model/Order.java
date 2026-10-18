@@ -3,6 +3,7 @@ package io.github.tsndre.minijava.store.model;
 import io.github.tsndre.minijava.store.constant.OrderStatus;
 import io.github.tsndre.minijava.store.dto.response.OrderItemResponse;
 import io.github.tsndre.minijava.store.dto.response.OrderResponse;
+import io.github.tsndre.minijava.store.util.GoDecimal;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,6 +13,8 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 
 @Data
@@ -33,6 +36,14 @@ public class Order {
     @Builder.Default
     private List<OrderItem> orderItems = new ArrayList<>();
     private Payment payment;
+
+    /** The order.created message the payment service charges the order for, with sorted keys like Go's encoding of a map. */
+    public Map<String, String> createdMessage() {
+        return new TreeMap<>(Map.of(
+                "order_id", id.toString(),
+                "user_id", userId.toString(),
+                "total_amount", GoDecimal.format(totalAmount)));
+    }
 
     public OrderResponse toResponse() {
         List<OrderItemResponse> items = null;

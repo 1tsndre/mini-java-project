@@ -13,9 +13,10 @@ import java.util.function.Function;
 public interface OrderRepository {
 
     /**
-     * Decrements stock for every reservation and inserts the orders returned by {@code build} in a
-     * single transaction. {@code build} receives the reserved products (post-decrement, in
-     * reservation order). Nothing is written unless every reservation succeeds.
+     * Decrements stock for every reservation, inserts the orders returned by {@code build} and queues
+     * an order.created message for each of them in the outbox, in a single transaction. {@code build}
+     * receives the reserved products (post-decrement, in reservation order). Nothing is written unless
+     * every reservation succeeds.
      *
      * @return the stored orders, with their items and payments
      * @throws ProductNotFoundException  if a reserved product no longer exists

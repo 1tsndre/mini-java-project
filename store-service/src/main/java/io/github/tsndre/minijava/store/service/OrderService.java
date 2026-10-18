@@ -26,7 +26,6 @@ import io.github.tsndre.minijava.store.service.exception.InternalException;
 import io.github.tsndre.minijava.store.service.exception.InvalidStatusException;
 import io.github.tsndre.minijava.store.service.exception.NotFoundException;
 import io.github.tsndre.minijava.store.service.exception.ValidationException;
-import io.github.tsndre.minijava.store.util.GoDecimal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -41,7 +40,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.TreeMap;
 import java.util.UUID;
 
 @Slf4j
@@ -100,10 +98,6 @@ public class OrderService {
                 log.atError().setCause(e).addKeyValue("user_id", userId).log("failed to clear cart after checkout");
             }
 
-            // A failed publish is not fatal: the order stays pending and the payment retry
-            // worker republishes it later.
-            orders.forEach(this::publishOrderCreated);
-
             log.atInfo()
                     .addKeyValue("user_id", userId)
                     .addKeyValue("count", orders.size())
@@ -151,15 +145,9 @@ public class OrderService {
     }
 
     private boolean publishOrderCreated(Order order) {
-        // Sorted keys, like Go's encoding of a map.
-        Map<String, String> payload = new TreeMap<>(Map.of(
-                "order_id", order.getId().toString(),
-                "user_id", order.getUserId().toString(),
-                "total_amount", GoDecimal.format(order.getTotalAmount())));
-
         byte[] message;
         try {
-            message = jsonMapper.writeValueAsBytes(payload);
+            message = jsonMapper.writeValueAsBytes(order.createdMessage());
         } catch (RuntimeException e) {
             log.error("failed to marshal order.created payload", e);
             return false;
@@ -174,8 +162,8 @@ public class OrderService {
     }
 
     /**
-     * Republishes order.created for orders still pending after {@code olderThan}, covering
-     * publishes that failed or were lost.
+     * Republishes order.created for orders still pending after {@code olderThan}, covering messages
+     * that were lost after the outbox relay published them.
      *
      * @return how many orders were republished
      */

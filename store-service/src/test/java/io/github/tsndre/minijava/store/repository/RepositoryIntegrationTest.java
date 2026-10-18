@@ -2,6 +2,7 @@ package io.github.tsndre.minijava.store.repository;
 
 import com.zaxxer.hikari.HikariDataSource;
 import io.github.tsndre.minijava.store.config.JacksonConfig;
+import io.github.tsndre.minijava.store.constant.NsqTopic;
 import io.github.tsndre.minijava.store.constant.OrderStatus;
 import io.github.tsndre.minijava.store.constant.PaymentMethod;
 import io.github.tsndre.minijava.store.constant.PaymentStatus;
@@ -11,6 +12,7 @@ import io.github.tsndre.minijava.store.model.CartItem;
 import io.github.tsndre.minijava.store.model.Category;
 import io.github.tsndre.minijava.store.model.Order;
 import io.github.tsndre.minijava.store.model.OrderItem;
+import io.github.tsndre.minijava.store.model.OutboxMessage;
 import io.github.tsndre.minijava.store.model.Payment;
 import io.github.tsndre.minijava.store.model.Product;
 import io.github.tsndre.minijava.store.model.ProductFilter;
@@ -77,6 +79,7 @@ class RepositoryIntegrationTest {
     private static CartRepository carts;
     private static OrderRepository orders;
     private static ReviewRepository reviews;
+    private static OutboxRepository outbox;
 
     /** An in-memory cache that stores JSON, like the Redis cache. */
     static final class MemCache implements Cache {
@@ -134,8 +137,9 @@ class RepositoryIntegrationTest {
         categories = new JdbcCategoryRepository(jdbc);
         products = new JdbcProductRepository(jdbc, cache);
         carts = new JdbcCartRepository(jdbc, transactions, cache);
-        orders = new JdbcOrderRepository(jdbc, transactions, cache);
+        orders = new JdbcOrderRepository(jdbc, transactions, cache, cache.json);
         reviews = new JdbcReviewRepository(jdbc);
+        outbox = new JdbcOutboxRepository(jdbc, transactions);
     }
 
     @AfterAll
@@ -542,5 +546,82 @@ class RepositoryIntegrationTest {
             assertThat(r.getUserName()).isEqualTo(buyer.getName());
             assertThat(r.getComment()).isEqualTo("Solid");
         });
+    }
+
+    @Nested
+    class Outbox {
+
+        private final User buyer = user();
+        private final Product product = product(store().getId(), category().getId(), unique("Lamp"), "15.00", 50);
+
+        /** Publishes every queued message into the void, so a test starts from an empty outbox. */
+        private void drainOutbox() {
+            while (outbox.publishPending(100, message -> {
+            }).published() > 0) {
+                // Other tests' checkouts queued messages too.
+            }
+        }
+
+        private String createdMessage(Order order) {
+            return cache.json.writeValueAsString(order.createdMessage());
+        }
+
+        @Test
+        void checkoutQueuesOrderCreatedAndARejectedMessageStaysQueuedInOrder() {
+            drainOutbox();
+            Order first = placeOrder(buyer, product, 1);
+            Order second = placeOrder(buyer, product, 2);
+
+            List<OutboxMessage> seen = new ArrayList<>();
+            RuntimeException nsqdDown = new IllegalStateException("nsqd down");
+            OutboxRepository.PublishResult result = outbox.publishPending(10, message -> {
+                seen.add(message);
+                if (seen.size() == 2) {
+                    throw nsqdDown;
+                }
+            });
+            assertThat(result.published()).isEqualTo(1);
+            assertThat(result.rejection()).containsSame(nsqdDown);
+            assertThat(seen).hasSize(2);
+            assertThat(seen.getFirst().topic()).isEqualTo(NsqTopic.ORDER_CREATED);
+            assertThat(seen.getFirst().payload()).isEqualTo(createdMessage(first));
+
+            List<OutboxMessage> retried = new ArrayList<>();
+            result = outbox.publishPending(10, retried::add);
+            assertThat(result.published()).isEqualTo(1);
+            assertThat(result.rejection()).isEmpty();
+            assertThat(retried).singleElement().satisfies(
+                    message -> assertThat(message.payload()).isEqualTo(createdMessage(second)));
+        }
+
+        @Test
+        void aFailedCheckoutQueuesNothing() {
+            drainOutbox();
+            assertThatThrownBy(() -> placeOrder(buyer, product, 1000)).isInstanceOf(StockUnavailableException.class);
+
+            assertThat(outbox.publishPending(10, message -> {
+            }).published()).isZero();
+        }
+
+        @Test
+        void concurrentRelaysPublishEachMessageOnce() throws Exception {
+            drainOutbox();
+            for (int i = 0; i < 5; i++) {
+                placeOrder(buyer, product, 1);
+            }
+
+            Map<Long, Integer> seen = new ConcurrentHashMap<>();
+            try (ExecutorService executor = Executors.newFixedThreadPool(3)) {
+                List<Future<OutboxRepository.PublishResult>> runs = new ArrayList<>();
+                for (int i = 0; i < 3; i++) {
+                    runs.add(executor.submit(() -> outbox.publishPending(10, message -> seen.merge(message.id(), 1, Integer::sum))));
+                }
+                for (Future<OutboxRepository.PublishResult> run : runs) {
+                    assertThat(run.get().rejection()).isEmpty();
+                }
+            }
+
+            assertThat(seen).hasSize(5).allSatisfy((id, count) -> assertThat(count).as("message %d", id).isEqualTo(1));
+        }
     }
 }
