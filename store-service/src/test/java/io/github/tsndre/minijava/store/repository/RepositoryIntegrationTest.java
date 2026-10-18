@@ -19,7 +19,7 @@ import io.github.tsndre.minijava.store.model.ProductFilter;
 import io.github.tsndre.minijava.store.model.Review;
 import io.github.tsndre.minijava.store.model.Store;
 import io.github.tsndre.minijava.store.model.User;
-import io.github.tsndre.minijava.store.repository.cache.Cache;
+import io.github.tsndre.minijava.store.repository.cache.InMemoryCache;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -36,12 +36,10 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
 import java.net.URI;
-import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -70,7 +68,8 @@ class RepositoryIntegrationTest {
 
     private static HikariDataSource dataSource;
     private static JdbcClient jdbc;
-    private static final MemCache cache = new MemCache();
+    private static JsonMapper json;
+    private static InMemoryCache cache;
 
     private static UserRepository users;
     private static StoreRepository stores;
@@ -80,38 +79,6 @@ class RepositoryIntegrationTest {
     private static OrderRepository orders;
     private static ReviewRepository reviews;
     private static OutboxRepository outbox;
-
-    /** An in-memory cache that stores JSON, like the Redis cache. */
-    static final class MemCache implements Cache {
-
-        private final Map<String, String> data = new ConcurrentHashMap<>();
-        private JsonMapper json;
-
-        @Override
-        public <T> Optional<T> get(String key, Class<T> type) {
-            String value = data.get(key);
-            return value == null ? Optional.empty() : Optional.of(json.readValue(value, type));
-        }
-
-        @Override
-        public void set(String key, Object value, Duration ttl) {
-            data.put(key, json.writeValueAsString(value));
-        }
-
-        @Override
-        public void delete(String key) {
-            data.remove(key);
-        }
-
-        @Override
-        public boolean exists(String key) {
-            return data.containsKey(key);
-        }
-
-        void clear() {
-            data.clear();
-        }
-    }
 
     @BeforeAll
     static void migrateFreshSchema() {
@@ -128,7 +95,8 @@ class RepositoryIntegrationTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(JacksonAutoConfiguration.class))
                 .withUserConfiguration(JacksonConfig.class)
-                .run(context -> cache.json = context.getBean(JsonMapper.class));
+                .run(context -> json = context.getBean(JsonMapper.class));
+        cache = new InMemoryCache(json);
 
         jdbc = JdbcClient.create(dataSource);
         TransactionTemplate transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
@@ -137,7 +105,7 @@ class RepositoryIntegrationTest {
         categories = new JdbcCategoryRepository(jdbc);
         products = new JdbcProductRepository(jdbc, cache);
         carts = new JdbcCartRepository(jdbc, transactions, cache);
-        orders = new JdbcOrderRepository(jdbc, transactions, cache, cache.json);
+        orders = new JdbcOrderRepository(jdbc, transactions, cache, json);
         reviews = new JdbcReviewRepository(jdbc);
         outbox = new JdbcOutboxRepository(jdbc, transactions);
     }
@@ -563,7 +531,7 @@ class RepositoryIntegrationTest {
         }
 
         private String createdMessage(Order order) {
-            return cache.json.writeValueAsString(order.createdMessage());
+            return json.writeValueAsString(order.createdMessage());
         }
 
         @Test

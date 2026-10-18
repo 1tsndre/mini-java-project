@@ -49,6 +49,11 @@ public class RedisCache implements Cache {
     }
 
     @Override
+    public boolean setIfAbsent(String key, Object value, Duration ttl) {
+        return Boolean.TRUE.equals(redis.opsForValue().setIfAbsent(key, jsonMapper.writeValueAsString(value), ttl));
+    }
+
+    @Override
     public boolean exists(String key) {
         try {
             return Boolean.TRUE.equals(redis.hasKey(key));

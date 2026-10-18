@@ -6,6 +6,9 @@ public final class HttpHeader {
     public static final String BEARER_SCHEME = "Bearer";
     public static final String REQUEST_ID = "X-Request-ID";
 
+    public static final String IDEMPOTENCY_KEY = "Idempotency-Key";
+    public static final String IDEMPOTENT_REPLAYED = "Idempotent-Replayed";
+
     public static final String RATE_LIMIT_LIMIT = "X-RateLimit-Limit";
     public static final String RATE_LIMIT_REMAINING = "X-RateLimit-Remaining";
     public static final String RATE_LIMIT_RESET = "X-RateLimit-Reset";

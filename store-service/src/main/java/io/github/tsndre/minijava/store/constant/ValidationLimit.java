@@ -11,6 +11,8 @@ public final class ValidationLimit {
     public static final int MAX_PASSWORD_BYTES = 72;
     /** The minimum password length, counted in bytes like the Go service. */
     public static final int MIN_PASSWORD_BYTES = 6;
+    /** The longest Idempotency-Key header accepted, in bytes. */
+    public static final int MAX_IDEMPOTENCY_KEY_LENGTH = 255;
 
     private ValidationLimit() {
     }

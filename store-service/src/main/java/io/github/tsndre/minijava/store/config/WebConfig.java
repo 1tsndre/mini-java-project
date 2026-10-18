@@ -1,5 +1,6 @@
 package io.github.tsndre.minijava.store.config;
 
+import io.github.tsndre.minijava.store.web.IdempotencyInterceptor;
 import io.github.tsndre.minijava.store.web.RouteGuard;
 import io.github.tsndre.minijava.store.web.bind.CurrentUserIdResolver;
 import io.github.tsndre.minijava.store.web.bind.JsonBodyResolver;
@@ -7,6 +8,7 @@ import io.github.tsndre.minijava.store.web.bind.MetaResolver;
 import io.github.tsndre.minijava.store.web.bind.PathUuidResolver;
 import io.github.tsndre.minijava.store.web.filter.AccessLogFilter;
 import io.github.tsndre.minijava.store.web.filter.BodySizeLimitFilter;
+import io.github.tsndre.minijava.store.web.filter.IdempotencyFilter;
 import io.github.tsndre.minijava.store.web.filter.RequestIdFilter;
 import io.github.tsndre.minijava.store.web.filter.TimeoutFilter;
 import jakarta.servlet.Filter;
@@ -25,7 +27,7 @@ import java.util.List;
 
 /**
  * The HTTP pipeline, in the Go router's order: request ID, access log, body size limit, request
- * timeout, then the route's auth, role and rate-limit rules.
+ * timeout, then the route's auth, role and rate-limit rules, and the Idempotency-Key handling.
  */
 @Configuration(proxyBeanMethods = false)
 @RequiredArgsConstructor
@@ -35,6 +37,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     private final AppConfig config;
     private final RouteGuard routeGuard;
+    private final IdempotencyInterceptor idempotencyInterceptor;
     private final JsonMapper jsonMapper;
 
     /** Uploads are the largest bodies accepted; leave headroom for the multipart encoding. */
@@ -45,6 +48,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(routeGuard);
+        registry.addInterceptor(idempotencyInterceptor);
     }
 
     @Override
@@ -73,6 +77,11 @@ public class WebConfig implements WebMvcConfigurer {
     @Bean
     FilterRegistrationBean<TimeoutFilter> timeoutFilter() {
         return register(new TimeoutFilter(config.app().requestTimeout(), jsonMapper), 4);
+    }
+
+    @Bean
+    FilterRegistrationBean<IdempotencyFilter> idempotencyFilter() {
+        return register(new IdempotencyFilter(), 5);
     }
 
     /** Multipart bodies are parsed by Tomcat, so they get the body size limit here. */

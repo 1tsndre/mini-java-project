@@ -18,4 +18,12 @@ public interface Cache {
     void delete(String key);
 
     boolean exists(String key);
+
+    /**
+     * Stores the value as JSON only if the key does not exist yet, and reports whether it did. Unlike
+     * the methods above it fails loudly, since neither answer is safe to assume.
+     *
+     * @throws RuntimeException if the cache is unavailable
+     */
+    boolean setIfAbsent(String key, Object value, Duration ttl);
 }

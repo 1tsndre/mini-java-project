@@ -6,6 +6,7 @@ import io.github.tsndre.minijava.store.config.AppConfig;
 import io.github.tsndre.minijava.store.config.JacksonConfig;
 import io.github.tsndre.minijava.store.constant.Role;
 import io.github.tsndre.minijava.store.grpc.PaymentStatusClient;
+import io.github.tsndre.minijava.store.repository.cache.InMemoryCache;
 import io.github.tsndre.minijava.store.service.AuthService;
 import io.github.tsndre.minijava.store.service.CartService;
 import io.github.tsndre.minijava.store.service.CategoryService;
@@ -13,6 +14,7 @@ import io.github.tsndre.minijava.store.service.OrderService;
 import io.github.tsndre.minijava.store.service.ProductService;
 import io.github.tsndre.minijava.store.service.ReviewService;
 import io.github.tsndre.minijava.store.service.StoreService;
+import io.github.tsndre.minijava.store.web.IdempotencyInterceptor;
 import io.github.tsndre.minijava.store.web.RateLimiter;
 import io.github.tsndre.minijava.store.web.RouteGuard;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +26,7 @@ import org.springframework.mock.env.MockEnvironment;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -32,11 +35,11 @@ import java.nio.file.Path;
 import java.util.UUID;
 
 /**
- * The HTTP layer with the real filters, route guard, argument resolvers, JSON configuration and
- * error handling, and mocked services.
+ * The HTTP layer with the real filters, route guard, idempotency handling, argument resolvers, JSON
+ * configuration and error handling, and mocked services.
  */
 @WebMvcTest
-@Import({JacksonConfig.class, RouteGuard.class, WebMvcTestSupport.Beans.class})
+@Import({JacksonConfig.class, RouteGuard.class, IdempotencyInterceptor.class, WebMvcTestSupport.Beans.class})
 abstract class WebMvcTestSupport {
 
     static final String JWT_SECRET = "controller-test-secret";
@@ -46,6 +49,8 @@ abstract class WebMvcTestSupport {
     MockMvc mvc;
     @Autowired
     JwtManager jwtManager;
+    @Autowired
+    InMemoryCache cache;
 
     @MockitoBean
     RateLimiter rateLimiter;
@@ -79,6 +84,11 @@ abstract class WebMvcTestSupport {
         @Bean
         JwtManager jwtManager(AppConfig config) {
             return new JwtManager(config.jwt().secret(), config.jwt().accessExpiry(), config.jwt().refreshExpiry());
+        }
+
+        @Bean
+        InMemoryCache cache(JsonMapper jsonMapper) {
+            return new InMemoryCache(jsonMapper);
         }
 
         @Bean

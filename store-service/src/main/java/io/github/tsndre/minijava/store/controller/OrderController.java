@@ -14,6 +14,7 @@ import io.github.tsndre.minijava.store.pagination.Pages;
 import io.github.tsndre.minijava.store.service.OrderService;
 import io.github.tsndre.minijava.store.web.ApiException;
 import io.github.tsndre.minijava.store.web.Authenticated;
+import io.github.tsndre.minijava.store.web.Idempotent;
 import io.github.tsndre.minijava.store.web.RateLimited;
 import io.github.tsndre.minijava.store.web.RequireRole;
 import io.github.tsndre.minijava.store.web.bind.CurrentUserId;
@@ -48,6 +49,7 @@ public class OrderController {
     @Authenticated
     @RequireRole(Role.BUYER)
     @RateLimited(RateLimitKey.AUTH)
+    @Idempotent
     public ResponseEntity<ApiResponse> checkout(Meta meta, @CurrentUserId UUID userId, @JsonBody CheckoutRequest req) {
         if (req.shippingAddress().isEmpty()) {
             Validation.reject("shipping_address", REQUIRED);
