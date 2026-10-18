@@ -84,6 +84,12 @@ class ValidationTest extends WebMvcTestSupport {
     }
 
     @Test
+    void logoutWithoutRefreshToken() throws Exception {
+        assertFieldError(post("/api/v1/auth/logout").content("{}"), "refresh_token", "is required");
+        verifyNoInteractions(authService);
+    }
+
+    @Test
     void createStoreNameTooLong() throws Exception {
         assertFieldError(as(userId, Role.BUYER, post("/api/v1/stores").content("{\"name\":\"" + LONG + "\"}")),
                 "name", "maximum 255 characters");

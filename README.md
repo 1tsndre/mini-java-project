@@ -56,7 +56,7 @@ Services report failures with typed exceptions (`NotFoundException`, `ConflictEx
 
 ## Features
 
-- **Auth** — JWT access/refresh tokens, role-based access control (Admin, Buyer, Seller)
+- **Auth** — JWT access/refresh tokens, role-based access control (Admin, Buyer, Seller). Refresh tokens are rotated: each one works once, its session is stored in Redis, and logout revokes it
 - **Products** — Full CRUD, search, filter by category/store/price, image upload
 - **Cart** — Redis-first with PostgreSQL fallback, persists across sessions, always shows current product prices (the price checkout charges)
 - **Orders** — Checkout reserves stock atomically in a single database transaction (conditional decrement, so stock can never go negative), split into one order per store (a single checkout may create multiple orders), status flow: `pending → paid → processing → shipping → shipped → completed`, cancellation up to `processing` (stock is returned in the same transaction)
@@ -203,7 +203,8 @@ docker-compose down                    # stop everything
 |--------|----------|-------------|------|
 | POST | `/api/v1/auth/register` | Register new user | - |
 | POST | `/api/v1/auth/login` | Login | - |
-| POST | `/api/v1/auth/refresh` | Refresh token (refresh token in request body) | - |
+| POST | `/api/v1/auth/refresh` | Refresh token (refresh token in request body; it is revoked and replaced) | - |
+| POST | `/api/v1/auth/logout` | Log out (revokes the refresh token in the request body) | - |
 
 ### Store
 | Method | Endpoint | Description | Auth |
@@ -345,7 +346,7 @@ TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/mini_java_ecommer
 
 CI runs them on every push, against a PostgreSQL service container.
 
-The end-to-end QA script runs the same 84 cases as the Go project against a running service:
+The end-to-end QA script runs the same 89 cases as the Go project against a running service:
 
 ```bash
 bash qa/qa_test.sh            # against http://localhost:8080

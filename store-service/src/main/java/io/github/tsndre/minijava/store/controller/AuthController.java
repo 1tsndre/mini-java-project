@@ -7,6 +7,7 @@ import io.github.tsndre.minijava.common.response.Responses;
 import io.github.tsndre.minijava.store.constant.RateLimitKey;
 import io.github.tsndre.minijava.store.constant.ValidationLimit;
 import io.github.tsndre.minijava.store.dto.request.LoginRequest;
+import io.github.tsndre.minijava.store.dto.request.LogoutRequest;
 import io.github.tsndre.minijava.store.dto.request.RefreshRequest;
 import io.github.tsndre.minijava.store.dto.request.RegisterRequest;
 import io.github.tsndre.minijava.store.service.AuthService;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import static io.github.tsndre.minijava.store.controller.Validation.MAX_PASSWORD_MESSAGE;
@@ -90,5 +92,16 @@ public class AuthController {
         }
 
         return Responses.success(HttpStatus.OK, authService.refreshToken(req), meta);
+    }
+
+    @PostMapping("/logout")
+    @RateLimited(RateLimitKey.AUTH)
+    public ResponseEntity<ApiResponse> logout(Meta meta, @JsonBody LogoutRequest req) {
+        if (req.refreshToken().isEmpty()) {
+            Validation.reject("refresh_token", REQUIRED);
+        }
+
+        authService.logout(req);
+        return Responses.success(HttpStatus.OK, Map.of("message", "logged out"), meta);
     }
 }

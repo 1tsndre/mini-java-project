@@ -24,7 +24,7 @@ class JsonBodyTest extends WebMvcTestSupport {
 
     @BeforeEach
     void loginSucceeds() {
-        when(authService.login(any())).thenReturn(new TokenPair("access", "refresh"));
+        when(authService.login(any())).thenReturn(new TokenPair("access", "refresh", "refresh-id"));
     }
 
     private LoginRequest loginRequestSeenByTheService() {

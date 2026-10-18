@@ -1,7 +1,9 @@
 package io.github.tsndre.minijava.common.jwt;
 
 import com.auth0.jwt.JWT;
+import com.auth0.jwt.JWTCreator;
 import com.auth0.jwt.JWTVerifier;
+import com.auth0.jwt.RegisteredClaims;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.exceptions.TokenExpiredException;
@@ -12,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 
 public class JwtManager {
 
@@ -37,10 +40,20 @@ public class JwtManager {
         this.refreshExpiry = refreshExpiry;
     }
 
+    /**
+     * Issues an access token and a refresh token. Only the refresh token has a jti: it identifies the
+     * session, so the token can be revoked.
+     */
     public TokenPair generateTokenPair(String userId, String email, String role) {
-        String accessToken = generateToken(userId, email, role, TokenType.ACCESS, accessExpiry);
-        String refreshToken = generateToken(userId, email, role, TokenType.REFRESH, refreshExpiry);
-        return new TokenPair(accessToken, refreshToken);
+        String accessToken = generateToken(userId, email, role, TokenType.ACCESS, accessExpiry, null);
+        String refreshTokenId = UUID.randomUUID().toString();
+        String refreshToken = generateToken(userId, email, role, TokenType.REFRESH, refreshExpiry, refreshTokenId);
+        return new TokenPair(accessToken, refreshToken, refreshTokenId);
+    }
+
+    /** How long a refresh token stays valid. */
+    public Duration refreshExpiry() {
+        return refreshExpiry;
     }
 
     /**
@@ -66,19 +79,24 @@ public class JwtManager {
                 claim(decoded, CLAIM_USER_ID),
                 claim(decoded, CLAIM_EMAIL),
                 claim(decoded, CLAIM_ROLE),
-                claim(decoded, CLAIM_TYPE));
+                claim(decoded, CLAIM_TYPE),
+                claim(decoded, RegisteredClaims.JWT_ID));
     }
 
-    private String generateToken(String userId, String email, String role, TokenType type, Duration expiry) {
+    private String generateToken(String userId, String email, String role, TokenType type, Duration expiry,
+                                 String id) {
         Instant now = Instant.now();
-        return JWT.create()
+        JWTCreator.Builder token = JWT.create()
                 .withClaim(CLAIM_USER_ID, userId)
                 .withClaim(CLAIM_EMAIL, email)
                 .withClaim(CLAIM_ROLE, role)
                 .withClaim(CLAIM_TYPE, type.value())
                 .withExpiresAt(now.plus(expiry))
-                .withIssuedAt(now)
-                .sign(signingAlgorithm);
+                .withIssuedAt(now);
+        if (id != null) {
+            token.withJWTId(id);
+        }
+        return token.sign(signingAlgorithm);
     }
 
     /** The Go service does not check "iat", only "exp" and "nbf". */

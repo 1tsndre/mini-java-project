@@ -4,10 +4,12 @@ import io.github.tsndre.minijava.common.jwt.JwtManager;
 import io.github.tsndre.minijava.common.jwt.TokenPair;
 import io.github.tsndre.minijava.store.constant.Role;
 import io.github.tsndre.minijava.store.dto.request.LoginRequest;
+import io.github.tsndre.minijava.store.dto.request.LogoutRequest;
 import io.github.tsndre.minijava.store.dto.request.RefreshRequest;
 import io.github.tsndre.minijava.store.dto.request.RegisterRequest;
 import io.github.tsndre.minijava.store.dto.response.UserResponse;
 import io.github.tsndre.minijava.store.model.User;
+import io.github.tsndre.minijava.store.repository.RefreshTokenRepository;
 import io.github.tsndre.minijava.store.repository.UserRepository;
 import io.github.tsndre.minijava.store.service.exception.ConflictException;
 import io.github.tsndre.minijava.store.service.exception.InternalException;
@@ -22,12 +24,16 @@ import org.springframework.security.crypto.bcrypt.BCrypt;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -38,13 +44,17 @@ class AuthServiceTest {
     private static final String HASHED_PASSWORD =
             BCrypt.hashpw(PASSWORD.getBytes(StandardCharsets.UTF_8), BCrypt.gensalt(4));
 
-    private final JwtManager jwtManager = new JwtManager("test-secret", Duration.ofMinutes(15), Duration.ofHours(168));
+    private static final Duration REFRESH_EXPIRY = Duration.ofHours(168);
+
+    private final JwtManager jwtManager = new JwtManager("test-secret", Duration.ofMinutes(15), REFRESH_EXPIRY);
 
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private RefreshTokenRepository refreshTokenRepository;
 
     private AuthService service() {
-        return new AuthService(userRepository, jwtManager);
+        return new AuthService(userRepository, refreshTokenRepository, jwtManager);
     }
 
     private static User storedUser(String email, Role role) {
@@ -123,14 +133,29 @@ class AuthServiceTest {
     class Login {
 
         @Test
-        void success() {
-            when(userRepository.findByEmail("test@example.com"))
-                    .thenReturn(Optional.of(storedUser("test@example.com", Role.BUYER)));
+        void successStoresTheRefreshToken() {
+            User user = storedUser("test@example.com", Role.BUYER);
+            when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
 
             TokenPair pair = service().login(new LoginRequest("test@example.com", PASSWORD));
 
             assertThat(pair.accessToken()).isNotEmpty();
             assertThat(pair.refreshToken()).isNotEmpty();
+            assertThat(jwtManager.validateToken(pair.refreshToken()).id()).isEqualTo(pair.refreshTokenId());
+            assertThat(jwtManager.validateToken(pair.accessToken()).id()).isEmpty();
+            verify(refreshTokenRepository).save(pair.refreshTokenId(), user.getId(), REFRESH_EXPIRY);
+        }
+
+        @Test
+        void refreshTokenCannotBeStored() {
+            User user = storedUser("test@example.com", Role.BUYER);
+            when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+            doThrow(new IllegalStateException("redis down"))
+                    .when(refreshTokenRepository).save(any(), eq(user.getId()), eq(REFRESH_EXPIRY));
+
+            assertThatThrownBy(() -> service().login(new LoginRequest("test@example.com", PASSWORD)))
+                    .isInstanceOf(InternalException.class)
+                    .hasMessage("internal server error");
         }
 
         @Test
@@ -160,13 +185,43 @@ class AuthServiceTest {
         private final TokenPair pair = jwtManager.generateTokenPair(userId.toString(), "test@example.com", Role.BUYER.value());
 
         @Test
-        void successReloadsTheRoleFromTheDatabase() {
+        void successReloadsTheRoleAndRotatesTheToken() {
+            when(refreshTokenRepository.consume(pair.refreshTokenId())).thenReturn(Optional.of(userId));
             when(userRepository.findById(userId)).thenReturn(Optional.of(
                     User.builder().id(userId).email("test@example.com").role(Role.SELLER).build()));
 
             TokenPair refreshed = service().refreshToken(new RefreshRequest(pair.refreshToken()));
 
             assertThat(jwtManager.validateToken(refreshed.accessToken()).role()).isEqualTo(Role.SELLER.value());
+            assertThat(refreshed.refreshTokenId()).isNotEqualTo(pair.refreshTokenId());
+            verify(refreshTokenRepository).save(refreshed.refreshTokenId(), userId, REFRESH_EXPIRY);
+        }
+
+        @Test
+        void alreadyUsedOrRevoked() {
+            when(refreshTokenRepository.consume(pair.refreshTokenId())).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service().refreshToken(new RefreshRequest(pair.refreshToken())))
+                    .isInstanceOf(UnauthorizedException.class)
+                    .hasMessage("invalid refresh token");
+        }
+
+        @Test
+        void storedForAnotherUser() {
+            when(refreshTokenRepository.consume(pair.refreshTokenId())).thenReturn(Optional.of(UUID.randomUUID()));
+
+            assertThatThrownBy(() -> service().refreshToken(new RefreshRequest(pair.refreshToken())))
+                    .isInstanceOf(UnauthorizedException.class)
+                    .hasMessage("invalid refresh token");
+        }
+
+        @Test
+        void tokenStoreUnavailable() {
+            when(refreshTokenRepository.consume(pair.refreshTokenId())).thenThrow(new IllegalStateException("redis down"));
+
+            assertThatThrownBy(() -> service().refreshToken(new RefreshRequest(pair.refreshToken())))
+                    .isInstanceOf(InternalException.class)
+                    .hasMessage("internal server error");
         }
 
         @Test
@@ -185,11 +240,90 @@ class AuthServiceTest {
 
         @Test
         void userNoLongerExists() {
+            when(refreshTokenRepository.consume(pair.refreshTokenId())).thenReturn(Optional.of(userId));
             when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service().refreshToken(new RefreshRequest(pair.refreshToken())))
                     .isInstanceOf(UnauthorizedException.class)
                     .hasMessage("invalid refresh token");
+        }
+    }
+
+    @Nested
+    class Logout {
+
+        private final TokenPair pair =
+                jwtManager.generateTokenPair(UUID.randomUUID().toString(), "test@example.com", Role.BUYER.value());
+
+        @Test
+        void success() {
+            service().logout(new LogoutRequest(pair.refreshToken()));
+
+            verify(refreshTokenRepository).revoke(pair.refreshTokenId());
+        }
+
+        @Test
+        void accessTokenRejected() {
+            assertThatThrownBy(() -> service().logout(new LogoutRequest(pair.accessToken())))
+                    .isInstanceOf(UnauthorizedException.class)
+                    .hasMessage("invalid refresh token");
+        }
+
+        @Test
+        void malformedToken() {
+            assertThatThrownBy(() -> service().logout(new LogoutRequest("not-a-token")))
+                    .isInstanceOf(UnauthorizedException.class)
+                    .hasMessage("invalid refresh token");
+        }
+
+        @Test
+        void tokenStoreUnavailable() {
+            doThrow(new IllegalStateException("redis down")).when(refreshTokenRepository).revoke(pair.refreshTokenId());
+
+            assertThatThrownBy(() -> service().logout(new LogoutRequest(pair.refreshToken())))
+                    .isInstanceOf(InternalException.class)
+                    .hasMessage("internal server error");
+        }
+    }
+
+    /** With a working token store: a refresh token works once, and not after logout. */
+    @Test
+    void refreshTokenRotation() {
+        User user = storedUser("test@example.com", Role.BUYER);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        AuthService service = new AuthService(userRepository, new InMemoryRefreshTokenRepository(), jwtManager);
+
+        TokenPair first = service.login(new LoginRequest("test@example.com", PASSWORD));
+        TokenPair second = service.refreshToken(new RefreshRequest(first.refreshToken()));
+
+        assertThatThrownBy(() -> service.refreshToken(new RefreshRequest(first.refreshToken())))
+                .as("a refresh token works only once")
+                .hasMessage("invalid refresh token");
+
+        service.logout(new LogoutRequest(second.refreshToken()));
+        assertThatThrownBy(() -> service.refreshToken(new RefreshRequest(second.refreshToken())))
+                .as("logout revokes the refresh token")
+                .hasMessage("invalid refresh token");
+    }
+
+    private static final class InMemoryRefreshTokenRepository implements RefreshTokenRepository {
+
+        private final Map<String, UUID> sessions = new ConcurrentHashMap<>();
+
+        @Override
+        public void save(String tokenId, UUID userId, Duration ttl) {
+            sessions.put(tokenId, userId);
+        }
+
+        @Override
+        public Optional<UUID> consume(String tokenId) {
+            return Optional.ofNullable(sessions.remove(tokenId));
+        }
+
+        @Override
+        public void revoke(String tokenId) {
+            sessions.remove(tokenId);
         }
     }
 
