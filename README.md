@@ -210,6 +210,7 @@ docker-compose down                    # stop everything
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | POST | `/api/v1/stores` | Create store (become seller) | Buyer |
+| GET | `/api/v1/stores/me` | Get my store (404 until the user opens one) | Any role |
 | GET | `/api/v1/stores/:id` | Get store details | - |
 | PUT | `/api/v1/stores/:id` | Update store | Seller |
 | POST | `/api/v1/stores/:id/logo` | Upload store logo | Seller |
@@ -346,7 +347,7 @@ TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/mini_java_ecommer
 
 CI runs them on every push, against a PostgreSQL service container.
 
-The end-to-end QA script runs the same 93 cases as the Go project against a running service:
+The end-to-end QA script runs the same 96 cases as the Go project against a running service:
 
 ```bash
 bash qa/qa_test.sh            # against http://localhost:8080

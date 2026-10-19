@@ -57,6 +57,14 @@ class RoutingTest extends WebMvcTestSupport {
         }
     }
 
+    /** "/stores/me" is the current user's store, not a store whose ID is "me". */
+    @Test
+    void myStoreIsNotAStoreId() throws Exception {
+        mvc.perform(get("/api/v1/stores/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errors[0].message").value("missing authorization header"));
+    }
+
     /** The Go router's catch-all route answers a known path with an unknown method with a 404, never a 405. */
     @Test
     void anUnsupportedMethodIsA404() throws Exception {

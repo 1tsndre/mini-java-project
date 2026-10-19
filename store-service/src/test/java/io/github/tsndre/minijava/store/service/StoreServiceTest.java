@@ -135,6 +135,26 @@ class StoreServiceTest {
     }
 
     @Nested
+    class GetMyStore {
+
+        @Test
+        void success() {
+            when(storeRepository.findByUserId(ownerId)).thenReturn(Optional.of(ownedStore()));
+
+            assertThat(storeService.getMyStore(ownerId).id()).isEqualTo(storeId);
+        }
+
+        @Test
+        void theUserHasNoStore() {
+            when(storeRepository.findByUserId(ownerId)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> storeService.getMyStore(ownerId))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessage("store not found");
+        }
+    }
+
+    @Nested
     class UpdateStore {
 
         @Test

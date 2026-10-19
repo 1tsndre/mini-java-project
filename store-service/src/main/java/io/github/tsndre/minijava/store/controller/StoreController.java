@@ -58,6 +58,14 @@ public class StoreController {
         return Responses.success(HttpStatus.CREATED, storeService.createStore(userId, req), meta);
     }
 
+    /** Any logged-in user: a buyer who has not opened a store yet gets a 404. */
+    @GetMapping("/me")
+    @Authenticated
+    @RateLimited(RateLimitKey.AUTH)
+    public ResponseEntity<ApiResponse> getMyStore(Meta meta, @CurrentUserId UUID userId) {
+        return Responses.success(HttpStatus.OK, storeService.getMyStore(userId), meta);
+    }
+
     @GetMapping("/{id}")
     @RateLimited(RateLimitKey.PUBLIC)
     public ResponseEntity<ApiResponse> getStore(Meta meta, @PathUuid(value = "id", message = INVALID_ID) UUID id) {

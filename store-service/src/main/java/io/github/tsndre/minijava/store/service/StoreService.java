@@ -75,6 +75,11 @@ public class StoreService {
         return findStore(id).toResponse();
     }
 
+    /** The store the user owns; NotFoundException if they have none yet. */
+    public StoreResponse getMyStore(UUID userId) {
+        return findByUserId(userId).orElseThrow(() -> new NotFoundException("store not found")).toResponse();
+    }
+
     public StoreResponse updateStore(UUID userId, UUID id, UpdateStoreRequest req) {
         Store store = findStore(id);
 
